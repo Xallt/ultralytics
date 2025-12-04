@@ -252,9 +252,9 @@ class Compose:
         """
         assert isinstance(index, (int, list)), f"The indices should be either list or int type but got {type(index)}"
         if isinstance(index, list):
-            assert isinstance(value, list), (
-                f"The indices should be the same type as values, but got {type(index)} and {type(value)}"
-            )
+            assert isinstance(
+                value, list
+            ), f"The indices should be the same type as values, but got {type(index)} and {type(value)}"
         if isinstance(index, int):
             index, value = [index], [value]
         for i, v in zip(index, value):
@@ -1183,6 +1183,9 @@ class RandomPerspective:
         xy = xy[:, :2] / xy[:, 2:3]
         segments = xy.reshape(n, -1, 2)
         bboxes = np.stack([segment2box(xy, self.size[0], self.size[1]) for xy in segments], 0)
+
+        if len(segments) == 0:
+            return bboxes, segments
 
         out_of_bounds = [
             (segment[:, 0] < 0) | (segment[:, 0] > self.size[0]) | (segment[:, 1] < 0) | (segment[:, 1] > self.size[1])
