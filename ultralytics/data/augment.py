@@ -13,12 +13,13 @@ import torch
 from PIL import Image
 from torch.nn import functional as F
 
+from ultralytics.data.converter import merge_multi_segment
 from ultralytics.data.utils import polygons2masks, polygons2masks_overlap
 from ultralytics.utils import LOGGER, IterableSimpleNamespace, colorstr
 from ultralytics.utils.checks import check_version
 from ultralytics.utils.instance import Instances
 from ultralytics.utils.metrics import bbox_ioa
-from ultralytics.utils.ops import segment2box, xywh2xyxy, xyxyxyxy2xywhr
+from ultralytics.utils.ops import resample_segments, segment2box, xywh2xyxy, xyxyxyxy2xywhr
 from ultralytics.utils.torch_utils import TORCHVISION_0_10, TORCHVISION_0_11, TORCHVISION_0_13
 
 DEFAULT_MEAN = (0.0, 0.0, 0.0)
@@ -252,9 +253,9 @@ class Compose:
         """
         assert isinstance(index, (int, list)), f"The indices should be either list or int type but got {type(index)}"
         if isinstance(index, list):
-            assert isinstance(value, list), (
-                f"The indices should be the same type as values, but got {type(index)} and {type(value)}"
-            )
+            assert isinstance(
+                value, list
+            ), f"The indices should be the same type as values, but got {type(index)} and {type(value)}"
         if isinstance(index, int):
             index, value = [index], [value]
         for i, v in zip(index, value):
@@ -1208,9 +1209,15 @@ class RandomPerspective:
                     segments_clipped.append(segment)
                     continue
                 segment_clipped = shapely.geometry.Polygon(segment).intersection(image_rect)
-                assert isinstance(segment_clipped, shapely.geometry.Polygon)
-                segments_clipped.append(np.array(segment_clipped.exterior.xy).T)
-            return bboxes, np.array(segments_clipped)
+                if isinstance(segment_clipped, shapely.geometry.Polygon):
+                    segments_clipped.append(np.array(segment_clipped.exterior.xy).T)
+                elif isinstance(segment_clipped, shapely.geometry.MultiPolygon):
+                    segments_list = [np.array(segm.exterior.xy).T.tolist() for segm in segment_clipped.geoms]
+                    segments_merged = np.concatenate(merge_multi_segment(segments_list), axis=0)
+                    segments_clipped.append(segments_merged)
+                else:
+                    raise ValueError(f"Segment {segment_clipped} is not a valid polygon: type {type(segment_clipped)}")
+            return bboxes, np.stack(resample_segments(segments_clipped, n=num), axis=0)
 
     def apply_keypoints(self, keypoints: np.ndarray, M: np.ndarray) -> np.ndarray:
         """Apply affine transformation to keypoints.
